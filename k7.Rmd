@@ -1,0 +1,398 @@
+<<<<<<< HEAD
+---
+title: "Untitled"
+output: html_document
+date: "2024-09-12"
+---
+
+```{r setup, include=FALSE}
+library(here)
+here::i_am('k7.Rmd')
+knitr::opts_knit$set(root.dir = here('01_data/GSM7021712'))
+```
+
+```{r}
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(DESeq2)
+```
+
+```{r}
+# set a working dir in knitr
+# (root.dir = "")
+```
+
+```{r}
+files <- list.files()
+files_filtered <- files[grep('_raw_feature_bc_matrix.h5', files)]
+file_i <- files_filtered[1]
+file_intermediate <- Read10X_h5(file_i)
+file_metadata <- as.data.frame(str_split_fixed(file_i,'_',4))
+file_intermediate <- CreateSeuratObject(counts = file_intermediate, project =  paste0(file_metadata$V2, '_', file_metadata$V3), min.cells = 3, min.features = 200)
+file_intermediate@meta.data$condition <- file_metadata$V2
+file_intermediate@meta.data$time <- file_metadata$V3
+file_intermediate@meta.data$time_2 <- paste0(file_metadata$V2, '_', file_metadata$V3)
+comb_seurat <- file_intermediate
+```
+
+```{r}
+for(file_i in files_filtered[-1]){
+  
+  file_intermediate <- Read10X_h5(file_i)
+  file_metadata <- as.data.frame(str_split_fixed(file_i,'_',4))
+  file_intermediate <- CreateSeuratObject(counts = file_intermediate, project =  paste0(file_metadata$V2, '_', file_metadata$V3), min.cells = 3, min.features = 200)
+  file_intermediate@meta.data$condition <- file_metadata$V2
+  file_intermediate@meta.data$time <- file_metadata$V3
+  file_intermediate@meta.data$time_2 <- paste0(file_metadata$V2, '_', file_metadata$V3)
+  comb_seurat <- merge(comb_seurat, file_intermediate)
+  print(file_i)
+  
+}
+```
+
+```{r}
+comb_seurat[["percent.mt"]] <- PercentageFeatureSet(comb_seurat, pattern = "^mt-")
+VlnPlot(comb_seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+```{r}
+comb_seurat <- subset(comb_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 4500 & percent.mt < 10)
+```
+
+```{r}
+comb_seurat[["percent.mt"]] <- PercentageFeatureSet(comb_seurat, pattern = "^mt-")
+VlnPlot(comb_seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+```{r}
+#levels(comb_seurat)
+comb_seurat <- NormalizeData(comb_seurat)
+comb_seurat <- JoinLayers(comb_seurat)
+markers <- FindAllMarkers(comb_seurat, only.pos = TRUE)
+Idents(comb_seurat) <- "seurat_annotations"
+Idents(comb_seurat) <- "time_2"
+
+```
+
+```{r}
+comb_seurat <- FindVariableFeatures(comb_seurat, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(comb_seurat), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(comb_seurat, cols = c('cadetblue', 'aquamarine'))
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+```
+
+```{r}
+all.genes <- rownames(comb_seurat)
+comb_seurat <- ScaleData(comb_seurat, features = all.genes)
+#high RAM usage
+```
+
+# The rest of the code is supposed to run pca, 
+
+```{r}
+comb_seurat <- RunPCA(comb_seurat, features = VariableFeatures(object = comb_seurat))
+
+```
+
+# show top 5 features (genes) for top 5 pc-s (principal components),
+
+```{r}
+print(comb_seurat[["pca"]], dims = 1:5, nfeatures = 5)
+
+```
+
+# visualize genes for top 2 pc-s,
+
+```{r}
+VizDimLoadings(comb_seurat, dims = 1:2, reduction = "pca")
+
+```
+
+# show graph of standard deviation of each pc (choose the number of pc-s at the 'elbow' of the plot),
+
+```{r}
+ElbowPlot(comb_seurat)
+```
+
+# create 'k-nearest neigbors' (KNN) graph based on first 10 pc-s (enter the number you got from the elbow plot) and cluster cells based on graph with 0.5 resolution (controls the amount of clusters),
+
+```{r}
+comb_seurat <- FindNeighbors(comb_seurat, dims = 1:10)
+comb_seurat <- FindClusters(comb_seurat, resolution = 0.5)
+```
+
+# visualize cell clusters.
+
+```{r}
+comb_seurat <- RunUMAP(comb_seurat, dims = 1:10)
+```
+=======
+---
+title: "Untitled"
+output: html_document
+date: "2024-09-12"
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(here)
+here::i_am('k7.Rmd')
+knitr::opts_knit$set(root.dir = here('01_data/GSM7021712'))
+```
+
+```{r}
+#BiocManager::install('celldex')
+#BiocManager::install('SingleR')
+library(celldex)
+library(SingleR)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(DESeq2)
+```
+
+# filter files to choose 1m-old mice
+
+```{r}
+files <- list.files()
+files_filtered <- files[grep('_1m_raw_feature_bc_matrix.h5', files)]
+file_i <- files_filtered[1]
+file_intermediate <- Read10X_h5(file_i)
+file_metadata <- as.data.frame(str_split_fixed(file_i,'_',4))
+file_intermediate <- CreateSeuratObject(counts = file_intermediate, project =  paste0(file_metadata$V2, '_', file_metadata$V3), min.cells = 3, min.features = 200)
+file_intermediate@meta.data$condition <- file_metadata$V2
+file_intermediate@meta.data$time <- file_metadata$V3
+file_intermediate@meta.data$time_2 <- paste0(file_metadata$V2, '_', file_metadata$V3)
+comb_seurat <- file_intermediate
+```
+
+# create SeuratObject and metadata
+
+```{r}
+for(file_i in files_filtered[-1]){
+  
+  file_intermediate <- Read10X_h5(file_i)
+  file_metadata <- as.data.frame(str_split_fixed(file_i,'_',4))
+  file_intermediate <- CreateSeuratObject(counts = file_intermediate, project =  paste0(file_metadata$V2, '_', file_metadata$V3), min.cells = 3, min.features = 200)
+  file_intermediate@meta.data$condition <- file_metadata$V2
+  file_intermediate@meta.data$time <- file_metadata$V3
+  file_intermediate@meta.data$time_2 <- paste0(file_metadata$V2, '_', file_metadata$V3)
+  comb_seurat <- merge(comb_seurat, file_intermediate)
+  print(file_i)
+  
+}
+```
+
+# percentage of mitochondrial genes (unfiltered data)
+
+```{r}
+comb_seurat[["percent.mt"]] <- PercentageFeatureSet(comb_seurat, pattern = "^mt-")
+VlnPlot(comb_seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+# subset data with given parameters (the parameters were chosen according to the paper's original code)
+
+```{r}
+comb_seurat <- subset(comb_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 4500 & percent.mt < 10)
+```
+
+# percentage of mitochondrial genes (filtered data)
+
+```{r}
+comb_seurat[["percent.mt"]] <- PercentageFeatureSet(comb_seurat, pattern = "^mt-")
+VlnPlot(comb_seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+# give the number of levels, normalize SeuratObject, join layers
+
+```{r}
+levels(comb_seurat)
+comb_seurat <- NormalizeData(comb_seurat)
+comb_seurat <- JoinLayers(comb_seurat)
+markers <- FindAllMarkers(comb_seurat, only.pos = TRUE)
+Idents(comb_seurat) <- "seurat_annotations"
+Idents(comb_seurat) <- "time_2"
+
+```
+
+```{r}
+comb_seurat[["RNA"]] <- split(comb_seurat[["RNA"]], f = comb_seurat$condition)
+
+comb_seurat
+```
+
+```{r}
+comb_seurat <- FindVariableFeatures(comb_seurat, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(comb_seurat), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(comb_seurat, cols = c('cadetblue', 'aquamarine'))
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+```
+
+```{r}
+# note: high RAM usage
+all.genes <- rownames(comb_seurat)
+comb_seurat <- ScaleData(comb_seurat, features = all.genes)
+```
+
+# run pca
+
+```{r}
+comb_seurat <- RunPCA(comb_seurat, features = VariableFeatures(object = comb_seurat))
+
+```
+
+# show top 5 features (genes) for top 5 pc-s (principal components),
+
+```{r}
+print(comb_seurat[["pca"]], dims = 1:5, nfeatures = 5)
+
+```
+
+# visualize genes for top 2 pc-s
+
+```{r}
+VizDimLoadings(comb_seurat, dims = 1:2, reduction = "pca")
+
+```
+
+# show graph of standard deviation of each pc (choose the number of pc-s at the 'elbow' of the plot)
+
+```{r}
+ElbowPlot(comb_seurat)
+```
+
+# integration
+
+```{r}
+comb_seurat <- IntegrateLayers(object = comb_seurat, method = CCAIntegration, orig.reduction = "pca", new.reduction = "integrated.cca",
+    verbose = FALSE)
+
+# re-join layers after integration
+comb_seurat[["RNA"]] <- JoinLayers(comb_seurat[["RNA"]])
+
+```
+
+# create 'k-nearest neigbors' (KNN) graph based on first 10 pc-s (enter the number you got from the elbow plot) and cluster cells based on graph with 0.5 resolution (controls the amount of clusters)
+
+```{r}
+comb_seurat <- FindNeighbors(comb_seurat, dims = 1:5, reduction = 'integrated.cca')
+comb_seurat <- FindClusters(comb_seurat, resolution = 0.3, cluster.name = 'unintegrated_clusters')
+```
+
+# reduce dimensions
+
+```{r}
+comb_seurat <- RunUMAP(comb_seurat, dims = 1:5, reduction = 'pca', reduction.name = 'integrated.cca')
+```
+
+```{r}
+DimPlot(comb_seurat, reduction = 'integrated.cca', group.by = c('stim', 'seurat_clusters'))
+```
+
+```{r}
+comb_seurat.markers <- FindAllMarkers(comb_seurat, only.pos = TRUE)
+comb_seurat.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1)
+```
+
+```{r}
+VlnPlot(comb_seurat, features = c("Ly86", "Csf1r"), layer = "counts", log = TRUE)
+```
+
+```{r}
+FeaturePlot(comb_seurat, features = c("Ly86", "Csf1r", "Cx3cr1", "Fcgr3", "Rgs10", "Cd53", "Laptm5", "Gpr34",
+    "Cd68"))
+```
+
+# expression values are log counts (log normalized counts)
+# get reference data
+
+```{r}
+ref <- celldex::MouseRNAseqData()
+View(as.data.frame(colData(ref)))
+```
+
+# annotation and clusterization
+
+```{r}
+comb_seurat_counts <- GetAssayData(comb_seurat, layer = 'counts')
+
+pred <- SingleR(test = comb_seurat_counts,
+        ref = ref,
+        labels = ref$label.main)
+pred
+ref <- celldex::MouseRNAseqData()
+View(as.data.frame(colData(ref)))
+comb_seurat$singleR.labels <- pred$labels[match(rownames(comb_seurat@meta.data), rownames(pred))]
+
+DimPlot(comb_seurat, reduction = 'integrated.cca', group.by = 'singleR.labels')
+```
+
+```{r}
+comb_seurat.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1) %>%
+    slice_head(n = 10) %>%
+    ungroup() -> top10
+DoHeatmap(comb_seurat, features = top10$gene) + NoLegend()
+
+```
+
+# diff expression between C_1m and A_1m, idents = 'cluster name'
+
+```{r}
+Idents(comb_seurat) <- comb_seurat$singleR.labels
+cluster <- subset(comb_seurat, idents = 'T cells')
+cluster_filtered <- subset(cluster, subset = orig.ident %in% c("A_1m", "C_1m"))
+Idents(cluster_filtered) <- cluster_filtered$orig.ident
+markers_cluster <- FindMarkers(cluster_filtered, ident.1 = "A_1m", ident.2 = "C_1m", verbose = TRUE)
+
+```
+
+```{r}
+write.csv(markers_cluster, file = "DE_1m_T_cells.csv")
+```
+
+# particular gene expression plots
+
+```{r}
+VlnPlot(comb_seurat, features = c("Csf1r"))
+FeaturePlot(comb_seurat, features = c("Csf1r"))
+```
+
+# create subset and check if there are any cells in clusters
+```{r}
+# Subset for 'A_1m' cells
+cells_A_1m <- subset(comb_seurat, subset = orig.ident == "A_1m")
+table(cells_A_1m$seurat_clusters)
+```
+
+```{r}
+# Subset for 'C_1m' cells
+cells_C_1m <- subset(comb_seurat, subset = orig.ident == "C_1m")
+table(cells_C_1m$seurat_clusters)
+```
+
+
+>>>>>>> eb4ac00ba3c1d4d84361530bb5d22b551f3aad1e
