@@ -1,0 +1,571 @@
+---
+title: "Single-cell RNA-sequencing identifies disease-associated oligodendrocytes in male APP NL-G-F and 5XFAD mice. Functional assays"
+author: "Daria Dodon"
+date: "2024-09-12"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+###Libraries
+
+```{r}
+library(here)
+library(enrichR)
+library(clusterProfiler)
+library(readxl)   
+library(tibble)   
+library(janitor) 
+library(org.Mm.eg.db) 
+library(enrichplot)
+library(RColorBrewer)
+library(ggplot2)
+library(gprofiler2)
+library(hebiomaRt)
+library(stats)
+library(dplyr)
+library(enrichplot)
+library(europepmc)
+library(gprofiler2)
+library(pheatmap)
+library(enrichR)
+library(biomaRt)
+```
+
+
+```{r}
+getwd()
+```
+
+###Oligodendrocytes
+
+```{r, include=FALSE}
+data<- read.csv("DE_1m_oligodendrocytes.csv", row.names = 1)
+```
+
+```{r, include=FALSE}
+genes_entrez <- getBM(filters = "external_gene_name",
+             attributes = c("entrezgene_id", "external_gene_name"),
+             values = rownames(data),
+             mart = ensembl)
+```
+
+```{r, include=FALSE}
+data <- data %>% tibble::rownames_to_column("genes")
+```
+
+```{r, include=FALSE}
+filtered_data_a <- data %>%
+  filter(!grepl("^mt-", genes))
+```
+
+```{r, include=FALSE}
+data_1 <- filtered_data %>% 
+  mutate(ranking = (sign(avg_log2FC) * (-log10(p_val_adj)))) %>% 
+  arrange(desc(ranking))
+```
+
+```{r, include=FALSE}
+de_results <- subset(data_1, abs(pct.1 - pct.2) > 0.2)
+```
+
+```{r, include=FALSE}
+de_results <- dplyr::left_join(de_results , genes_entrez  , by = c("genes" = "external_gene_name"))
+```
+
+```{r, include=FALSE}
+de_results %>% janitor::get_dupes("entrezgene_id")
+```
+
+```{r, include=FALSE}
+de_results <- de_results %>%
+  tidyr::drop_na() %>%
+  dplyr::distinct(entrezgene_id, .keep_all = TRUE)
+```
+
+```{r}
+top_gene <- de_results %>%
+  arrange(desc(avg_log2FC)) %>%
+  head(500)
+```
+
+```{r}
+genes_list<- top_genes$ranking
+names(genes_list) <- top_genes$entrezgene_id
+genes_list<- sort(genes_list, decreasing = TRUE)
+genes_list<- genes_list[is.finite(genes_list)]
+```
+
+```{r}
+gseKEGG(genes_list, organism = "mmu", by = "DOSE", nPerm = 1000)
+```
+
+```{r}
+gseWP_res_025 <- gseWP(genes_list , organism = "Mus musculus", by = "DOSE", nPerm = 1000, pvalueCutoff = 0.25)
+```
+
+###Visualisation Oligodendrocytes
+
+##GSEA
+
+```{r, echo=FALSE, fig.height=6, fig.width=6}
+Oligodendrocytes_GSEA<-dotplot(gseWP_res_025, showCategory = 30, x = "NES", color = "NES") +
+  ggtitle("Oligodendrocytes GSEA") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "darkblue"),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
+    axis.title = element_text(size = 12, color = "black"),
+    legend.title = element_text(size = 12, color = "black"),
+    legend.text = element_text(size = 10, color = "black")
+  ) +
+  scale_color_gradientn(colors = brewer.pal(9, "YlGnBu"))
+```
+
+```{r, include=FALSE}
+ggsave("Oligodendrocytes_GSEA.png", plot = Oligodendrocytes_GSEA, width = 10, height = 6, dpi = 300)
+ggsave("Oligodendrocytes_GSEA.jpg", plot = Oligodendrocytes_GSEA, width = 10, height = 6, dpi = 300)
+```
+
+#PCT
+
+```{r, include=FALSE}
+Oligodendrocytes_pct <-ggplot(de_results, aes(x = genes, y = pct.1, fill = "A_1M")) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_bar(aes(y = pct.2, fill = "C_1M"), stat = "identity", position = "dodge") +
+  labs(x = "Gene", y = "Percentage of Cells", title = "Gene Expression Percentages in Two Groups") +
+  theme_minimal()
+```
+
+```{r, include=FALSE}
+ggsave("Oligodendrocytes_pct.png", plot = Oligodendrocytes_pct, width = 10, height = 6, dpi = 300)
+ggsave("Oligodendrocytes_pct.jpg", plot = Oligodendrocytes_pct, width = 10, height = 6, dpi = 300)
+```
+
+```{r, include=FALSE}
+gseWP_res_025_genename <- setReadable(gseWP_res_025, 'org.Mm.eg.db', 'ENTREZID')
+```
+
+##Cnetpl
+
+```{r, include=FALSE}
+p2 <- cnetplot(gseWP_res_025_genename, categorySize="pvalue", 
+               color.params = list(foldChange = genes_list))
+```
+
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+cneplot_pval_Oligodendrocytes <- p2 + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),  
+    axis.title.y = element_blank(), 
+    axis.text.x = element_blank(),  
+    axis.text.y = element_blank(), 
+    axis.ticks = element_blank(),  
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    plot.title = element_text(size = 16, face = "bold", color = "darkblue")
+  ) +
+  labs(
+    title = "Oligodendrocytes Network Plot of Enriched Categories",
+    color = "Fold Change",
+    size = "p-value"
+  )
+```
+
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+ggsave("cneplot_pval_Oligodendrocytes.png", plot = cneplot_pval_Oligodendrocytes, width = 10, height = 8, dpi = 700)
+ggsave("cneplot_pval_Oligodendrocytes.jpg", plot = cneplot_pval_Oligodendrocytes, width = 10, height = 8, dpi = 700)
+```
+
+##Treeplot
+
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+tmp <- pairwise_termsim(gseWP_res_025_genename)
+treeplot(tmp)
+```
+
+###Microglia
+
+```{r, include=FALSE}
+data_n<- read.csv("DE_1m_microglia.csv", row.names = 1)
+```
+
+```{r, include=FALSE}
+genes_entrez_1 <- getBM(filters = "external_gene_name",
+             attributes = c("entrezgene_id", "external_gene_name"),
+             values = rownames(data_n),
+             mart = ensembl)
+```
+
+```{r, include=FALSE}
+data_n <- data_n %>% tibble::rownames_to_column("genes")
+```
+
+```{r, include=FALSE}
+filtered_data_n <- data_n %>%
+  filter(!grepl("^mt-", genes))
+```
+
+```{r, include=FALSE}
+data_1n <- filtered_data_n %>% 
+  mutate(ranking = (sign(avg_log2FC) * (-log10(p_val_adj)))) %>% 
+  arrange(desc(ranking))
+```
+
+
+```{r, include=FALSE}
+de_results_n <- subset(data_1n, abs(pct.1 - pct.2) > 0.2)
+```
+
+```{r, include=FALSE}
+de_results_n <- dplyr::left_join(de_results_n, genes_entrez_1, by = c("genes" = "external_gene_name"))
+```
+
+```{r, include=FALSE}
+de_results_n %>% janitor::get_dupes("entrezgene_id")
+```
+
+```{r, include=FALSE}
+de_results_n <- de_results_n %>%
+  tidyr::drop_na() %>%
+  dplyr::distinct(entrezgene_id, .keep_all = TRUE)
+```
+
+```{r}
+top_genes1 <- de_results_n %>%
+  arrange(desc(avg_log2FC)) %>%
+  head(500)
+```
+
+
+```{r}
+genes_list1 <- top_genes1$ranking
+names(genes_list1) <- top_genes1$entrezgene_id
+genes_list1 <- sort(genes_list1, decreasing = TRUE)
+genes_list1 <- genes_list1[is.finite(genes_list1)]
+```
+
+
+```{r}
+gseKEGG(genes_list1, organism = "mmu", by = "DOSE", nPerm = 1000)
+```
+
+```{r}
+gseWP_res_025_n <- gseWP(genes_list1, organism = "Mus musculus", by = "DOSE", nPerm = 1000, pvalueCutoff = 0.25)
+
+```
+
+### Visualizations Microglia
+
+##GSE
+
+```{r}
+Microglia_GSEA<-dotplot(gseWP_res_025_n, showCategory = 30, x = "NES", color = "NES") +
+  ggtitle("Microglia GSEA") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "darkblue"),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
+    axis.title = element_text(size = 12, color = "black"),
+    legend.title = element_text(size = 12, color = "black"),
+    legend.text = element_text(size = 10, color = "black")
+  ) +
+  scale_color_gradientn(colors = brewer.pal(9, "YlGnBu"))
+```
+
+```{r, include=FALSE}
+ggsave("Microglia_GSEA.png", plot = Microglia_GSEA, width = 10, height = 6, dpi = 300)
+ggsave("Microglia_GSEA.jpg", plot = Microglia_GSEA, width = 10, height = 6, dpi = 300)
+```
+
+```{r, include=FALSE}
+gseWP_res_025_genename_n <- setReadable(gseWP_res_025_n, 'org.Mm.eg.db', 'ENTREZID')
+```
+
+##Cnetpl
+
+```{r, include=FALSE}
+n1 <- cnetplot(gseWP_res_025_genename_n, color.params = list(foldChange = genes_list))
+## categorySize can be scaled by 'pvalue' or 'geneNum'
+n2 <- cnetplot(gseWP_res_025_genename_n, categorySize="pvalue", 
+               color.params = list(foldChange = genes_list))
+```
+
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+cneplot_pval_Microglia <- n2 + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),  
+    axis.title.y = element_blank(), 
+    axis.text.x = element_blank(),  
+    axis.text.y = element_blank(), 
+    axis.ticks = element_blank(),  
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    plot.title = element_text(size = 16, face = "bold", color = "darkblue")
+  ) +
+  labs(
+    title = "Microglia Network Plot of Enriched Categories",
+    color = "Fold Change",
+    size = "p-value"
+  )
+```
+
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+ggsave("cneplot_pval_Microglia.png", plot = cneplot_pval_Microglia, width = 10, height = 6, dpi = 700)
+ggsave("cneplot_pval_Microglia.jpg", plot = cneplot_pval_Microglia, width = 10, height = 6, dpi = 700)
+```
+
+###Astrocytes
+
+```{r, include=FALSE}
+data_a<- read.csv("DE_1m_astrocytes.csv", row.names = 1)
+```
+
+```{r, include=FALSE}
+genes_entrez_3 <- getBM(filters = "external_gene_name",
+             attributes = c("entrezgene_id", "external_gene_name"),
+             values = rownames(data_a),
+             mart = ensembl)
+```
+
+```{r, include=FALSE}
+data_a <- data_a %>% tibble::rownames_to_column("genes")
+```
+
+```{r, include=FALSE}
+filtered_data_a <- data_a %>%
+  filter(!grepl("^mt-", genes))
+```
+
+```{r, include=FALSE}
+data_1a <- filtered_data_a %>% 
+  mutate(ranking = (sign(avg_log2FC) * (-log10(p_val_adj)))) %>% 
+  arrange(desc(ranking))
+```
+
+```{r, include=FALSE}
+de_results_a <- subset(data_1a, abs(pct.1 - pct.2) > 0.2)
+```
+
+```{r, include=FALSE}
+de_results_a <- dplyr::left_join(de_results_a , genes_entrez_3  , by = c("genes" = "external_gene_name"))
+```
+
+```{r, include=FALSE}
+de_results_a %>% janitor::get_dupes("entrezgene_id")
+```
+
+```{r, include=FALSE}
+de_results_a <- de_results_a %>%
+  tidyr::drop_na() %>%
+  dplyr::distinct(entrezgene_id, .keep_all = TRUE)
+
+```
+
+```{r}
+top_genes3 <- de_results_a %>%
+  arrange(desc(avg_log2FC)) %>%
+  head(500)
+```
+
+```{r}
+genes_list3<- top_genes3$ranking
+names(genes_list3) <- top_genes3$entrezgene_id
+genes_list3<- sort(genes_list3, decreasing = TRUE)
+genes_list3<- genes_list3[is.finite(genes_list3)]
+
+```
+
+```{r}
+gseKEGG(genes_list3, organism = "mmu", by = "DOSE", nPerm = 1000)
+```
+
+```{r}
+gseWP_res_025_a <- gseWP(genes_list3 , organism = "Mus musculus", by = "DOSE", nPerm = 1000, pvalueCutoff = 0.25)
+```
+
+### Visualizations Astrocytes
+
+##GSEA
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+astrocytes_GSEA<-dotplot(gseWP_res_025_a, showCategory = 30, x = "NES", color = "NES") +
+  ggtitle("Astrocytes GSEA") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "darkblue"),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
+    axis.title = element_text(size = 12, color = "black"),
+    legend.title = element_text(size = 12, color = "black"),
+    legend.text = element_text(size = 10, color = "black")
+  ) +
+  scale_color_gradientn(colors = brewer.pal(9, "YlGnBu"))
+astrocytes_GSEA
+```
+
+```{r, include=FALSE}
+ggsave("astrocytes_GSEA.png", plot = astrocytes_GSEA, width = 10, height = 6, dpi = 300)
+ggsave("astrocytes_GSEA.jpg", plot = astrocytes_GSEA, width = 10, height = 6, dpi = 300)
+```
+
+```{r, include=FALSE}
+gseWP_res_025_genename_a <- setReadable(gseWP_res_025_a, 'org.Mm.eg.db', 'ENTREZID')
+```
+
+##Cneplot
+
+```{r, include=FALSE}
+a2 <- cnetplot(gseWP_res_025_genename_a, categorySize="pvalue",
+               color.params = list(foldChange = genes_list3))
+```
+
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+cneplot_pval_astrocytes_GSEA <- a2 + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),  
+    axis.title.y = element_blank(), 
+    axis.text.x = element_blank(),  
+    axis.text.y = element_blank(), 
+    axis.ticks = element_blank(),  
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    plot.title = element_text(size = 16, face = "bold", color = "darkblue")
+  ) +
+  labs(
+    title = "Astrocytes Network Plot of Enriched Categories",
+    color = "Fold Change",
+    size = "p-value"
+  )
+```
+
+
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+ggsave("cneplot_pval_Astrocytes.png", plot = cneplot_pval_astrocytes_GSEA , width = 10, height = 6, dpi = 700)
+ggsave("cneplot_pval_Astrocytes.jpg", plot = cneplot_pval_astrocytes_GSEA , width = 10, height = 6, dpi = 700)
+```
+
+
+```{r, include=FALSE}
+tma <- pairwise_termsim(gseWP_res_025_genename_f)
+treeplot(tma)
+```
+
+###GSEA Clusterization
+
+```{r}
+load("gseWP_res_025_astro.RData")
+load("gseWP_res_025_o.RData")
+```
+
+```{r}
+gseWP_res_025_astro <- gseWP_res_025_astro@result
+gseWP_res_025_o <- gseWP_res_025_o@result
+
+```
+
+```{r}
+gseWP_res_025_astro$cell_type <- "Astrocyte"
+gseWP_res_025_o$cell_type <- "Oligodendrocytes"
+```
+
+```{r}
+combined_gsea <- bind_rows(gseWP_res_025_astro, gseWP_res_025_o)
+```
+
+###Dotplot clusters
+
+```{r}
+ggplot(combined_gsea, aes(x = cell_type, y = Description, size = NES, color = p.adjust)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "GSEA Results Across Cell Types",
+       x = "Cell Type",
+       y = "Pathway",
+       size = "NES",
+       color = "Adjusted p-value")
+```
+
+```{r}
+gsea_matrix <- reshape2::dcast(combined_gsea, ID + Description ~ cell_type, value.var = "NES")
+rownames(gsea_matrix) <- gsea_matrix$Description
+gsea_matrix <- gsea_matrix[, -c(1, 2)] 
+```
+
+###Pheatmap clusters
+```{r}
+pheatmap(gsea_matrix, 
+         cluster_rows = TRUE, 
+         cluster_cols = TRUE, 
+         display_numbers = TRUE, 
+         scale = "row", 
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(50))
+```
+
+```{r}
+de_results <- read.csv(here("C:/rstudio/github rnaseq course/2024-daad-rnaseq-course/project/DE_1m_microglia.csv"), row.names = 1)
+```
+
+#pval troubles - minus filering
+```{r}
+filtered_de_results <- de_results %>%
+  filter(!grepl("^mt-", rownames(de_results)))
+
+top_genes <- rownames(filtered_de_results %>%
+                        filter(avg_log2FC > 0) %>%
+                        arrange(desc(avg_log2FC)) %>%  # 
+                        head(300))
+top_genes
+```
+
+### enrichR
+
+```{r}
+dbs <- listEnrichrDbs()
+dbs
+```
+```{r}
+dbs <- c("WikiPathways_2019_Mouse", "Reactome_2016", "Seq_Disease_Gene_and_Drug_Signatures_from_GEO", "DisGeNET", "GO_Molecular_Function_2023", "CellMarker_2024", "DGIdb_Drug_Targets_2024")
+```
+
+```{r}
+head(enriched[["DisGeNET"]])
+```
+
+###!!!!
+```{r}
+#enriched[["DisGeNET"]] <- enriched[["DisGeNET"]] %>%
+  #mutate(Adjusted.P.value = ifelse(Adjusted.P.value == 0, 1e-10, Adjusted.P.value),
+         #log10_pval = -log10(Adjusted.P.value))
+```
+
+
+```{r}
+ggplot(top_terms, aes(x = reorder(Term, -log10_pval), 
+                      y = log10_pval, 
+                      fill = Combined.Score)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "#00b1b1", high = "#9f0077") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 10 Enrichment Terms from DisGeNET",
+       x = "Enrichment Term",
+       y = "-log10(Adjusted P-value)",
+       fill = "Combined Score") +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        plot.title = element_text(size = 16, face = "bold"))
+```
+
